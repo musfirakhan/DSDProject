@@ -1,0 +1,66 @@
+module matrix_multiply_18to9 (
+input clk, 
+input reset, 
+    input wire [7:0] data_in_0, data_in_1, data_in_2, data_in_3, data_in_4, data_in_5, 
+                    data_in_6, data_in_7, data_in_8, data_in_9, data_in_10, data_in_11, 
+                    data_in_12, data_in_13, data_in_14, data_in_15, data_in_16, data_in_17,
+    input wire start_multiply,           // Flag to start the multiplication
+    output reg [7:0] data_out_0, data_out_1, data_out_2, data_out_3, data_out_4, data_out_5,
+                      data_out_6, data_out_7, data_out_8,
+    output reg multiply_done             // Signal indicating the multiplication is done
+);
+
+    // Internal 3x3 matrices for computation
+    reg [7:0] A [0:2][0:2];   // 3x3 matrix A
+    reg [7:0] B [0:2][0:2];   // 3x3 matrix B
+    reg [15:0] C [0:2][0:2];  // 3x3 matrix C for storing results (16 bits to handle overflow)
+
+    // Control the start of the multiplication process
+    reg multiply_in_progress; // To track if multiplication is happening
+
+    // Hardcoded mapping of data_in to A and B matrices
+    always @(*) begin
+        // Matrix A
+        A[0][0] = data_in_0;  A[0][1] = data_in_1;  A[0][2] = data_in_2;
+        A[1][0] = data_in_3;  A[1][1] = data_in_4;  A[1][2] = data_in_5;
+        A[2][0] = data_in_6;  A[2][1] = data_in_7;  A[2][2] = data_in_8;
+
+        // Matrix B
+        B[0][0] = data_in_9;  B[0][1] = data_in_10; B[0][2] = data_in_11;
+        B[1][0] = data_in_12; B[1][1] = data_in_13; B[1][2] = data_in_14;
+        B[2][0] = data_in_15; B[2][1] = data_in_16; B[2][2] = data_in_17;
+    end
+
+    // Perform matrix multiplication
+    always @(posedge clk) begin
+        if (start_multiply) begin
+            multiply_in_progress <= 1;
+
+            // Perform multiplication for all elements of C
+            C[0][0] <= (A[0][0] * B[0][0]) + (A[0][1] * B[1][0]) + (A[0][2] * B[2][0]);
+            C[0][1] <= (A[0][0] * B[0][1]) + (A[0][1] * B[1][1]) + (A[0][2] * B[2][1]);
+            C[0][2] <= (A[0][0] * B[0][2]) + (A[0][1] * B[1][2]) + (A[0][2] * B[2][2]);
+
+            C[1][0] <= (A[1][0] * B[0][0]) + (A[1][1] * B[1][0]) + (A[1][2] * B[2][0]);
+            C[1][1] <= (A[1][0] * B[0][1]) + (A[1][1] * B[1][1]) + (A[1][2] * B[2][1]);
+            C[1][2] <= (A[1][0] * B[0][2]) + (A[1][1] * B[1][2]) + (A[1][2] * B[2][2]);
+
+            C[2][0] <= (A[2][0] * B[0][0]) + (A[2][1] * B[1][0]) + (A[2][2] * B[2][0]);
+            C[2][1] <= (A[2][0] * B[0][1]) + (A[2][1] * B[1][1]) + (A[2][2] * B[2][1]);
+            C[2][2] <= (A[2][0] * B[0][2]) + (A[2][1] * B[1][2]) + (A[2][2] * B[2][2]);
+
+            multiply_done <= 1; // Indicate completion
+        end else begin
+            multiply_in_progress <= 0;
+            multiply_done <= 0;
+        end
+    end
+
+    // Flatten C matrix into data_out
+    always @(*) begin
+        data_out_0 = C[0][0][7:0]; data_out_1 = C[0][1][7:0]; data_out_2 = C[0][2][7:0];
+        data_out_3 = C[1][0][7:0]; data_out_4 = C[1][1][7:0]; data_out_5 = C[1][2][7:0];
+        data_out_6 = C[2][0][7:0]; data_out_7 = C[2][1][7:0]; data_out_8 = C[2][2][7:0];
+    end
+
+endmodule

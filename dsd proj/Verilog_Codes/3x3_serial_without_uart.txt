@@ -1,0 +1,148 @@
+module matrix_multiplication (
+    input wire clk,
+    input wire reset,
+    input wire start,
+    output reg done,
+
+    // Output ports for serialized rows of matrices A, B, and Result
+    output reg signed [DATA_WIDTH-1:0] A_row_0,
+    output reg signed [DATA_WIDTH-1:0] A_row_1,
+    output reg signed [DATA_WIDTH-1:0] A_row_2,
+    output reg signed [DATA_WIDTH-1:0] B_row_0,
+    output reg signed [DATA_WIDTH-1:0] B_row_1,
+    output reg signed [DATA_WIDTH-1:0] B_row_2,
+    output reg signed [RESULT_WIDTH-1:0] Result_row_0,
+    output reg signed [RESULT_WIDTH-1:0] Result_row_1,
+    output reg signed [RESULT_WIDTH-1:0] Result_row_2
+);
+
+    // Define parameters for matrix size
+    parameter SIZE = 3;
+    parameter DATA_WIDTH = 8;
+    parameter RESULT_WIDTH = 16;
+
+    // Define matrix types
+    reg signed [DATA_WIDTH-1:0] A [0:SIZE-1][0:SIZE-1];
+    reg signed [DATA_WIDTH-1:0] B [0:SIZE-1][0:SIZE-1];
+    reg signed [RESULT_WIDTH-1:0] Result [0:SIZE-1][0:SIZE-1];
+
+    // MAC unit signals
+    reg signed [DATA_WIDTH-1:0] mac_a, mac_b;
+    reg signed [RESULT_WIDTH-1:0] mac_acc;
+
+    // FSM states
+    localparam IDLE = 3'd0, LOAD = 3'd1, MAC = 3'd2, STORE = 3'd3, OUTPUT = 3'd4, DONE = 3'd5;
+    reg [2:0] state;
+
+    // Counters for matrix indices
+    reg [1:0] i, j, k;
+    reg [1:0] row_counter;  // Row counter for output
+
+    // Declare row and col as integers for initialization
+    integer row, col;
+
+    // FSM and main control logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            state <= IDLE;
+            i <= 0;
+            j <= 0;
+            k <= 0;
+            row_counter <= 0;
+            done <= 0;
+            mac_acc <= 0;
+
+            // Initialize matrices and output rows to zero
+            for (row = 0; row < SIZE; row = row + 1) begin
+                for (col = 0; col < SIZE; col = col + 1) begin
+                    A[row][col] <= 0;
+                    B[row][col] <= 0;
+                    Result[row][col] <= 0;
+                end
+            end
+
+            // Set initial outputs to zero
+            A_row_0 <= 0; A_row_1 <= 0; A_row_2 <= 0;
+            B_row_0 <= 0; B_row_1 <= 0; B_row_2 <= 0;
+            Result_row_0 <= 0; Result_row_1 <= 0; Result_row_2 <= 0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    if (start) begin
+                        state <= LOAD;  // Transition to LOAD state
+                    end
+                end
+
+                LOAD: begin
+                    // Initialize matrices A and B with fixed values
+                    A[0][0] <= 1; A[0][1] <= 2; A[0][2] <= 3;
+                    A[1][0] <= 4; A[1][1] <= 5; A[1][2] <= 6;
+                    A[2][0] <= 7; A[2][1] <= 8; A[2][2] <= 9;
+
+                    B[0][0] <= 9; B[0][1] <= 8; B[0][2] <= 7;
+                    B[1][0] <= 6; B[1][1] <= 5; B[1][2] <= 4;
+                    B[2][0] <= 3; B[2][1] <= 2; B[2][2] <= 1;
+
+                    state <= MAC;  // Transition to MAC state
+                    mac_acc <= 0;  // Reset the accumulator
+                end
+
+                MAC: begin
+                    mac_a <= A[i][k];
+                    mac_b <= B[k][j];
+                    mac_acc <= mac_acc + A[i][k] * B[k][j];
+
+                    if (k == SIZE-1) begin
+                        k <= 0;  // Reset column index for the next row
+                        state <= STORE;  // Transition to STORE state
+                    end else begin
+                        k <= k + 1;  // Move to the next column
+                    end
+                end
+
+                STORE: begin
+                    Result[i][j] <= mac_acc;  // Store the result
+                    mac_acc <= 0;  // Reset accumulator
+
+                    if (i == SIZE-1 && j == SIZE-1) begin
+                        state <= OUTPUT;  // Transition to OUTPUT state when done
+                    end else if (j == SIZE-1) begin
+                        i <= i + 1;  // Move to the next row
+                        j <= 0;  // Reset column index
+                        state <= MAC;  // Continue with MAC state
+                    end else begin
+                        j <= j + 1;  // Move to the next column
+                        state <= MAC;  // Continue with MAC state
+                    end
+                end
+
+                OUTPUT: begin
+                    // Output matrices row-wise
+                    A_row_0 <= A[row_counter][0];
+                    A_row_1 <= A[row_counter][1];
+                    A_row_2 <= A[row_counter][2];
+
+                    B_row_0 <= B[row_counter][0];
+                    B_row_1 <= B[row_counter][1];
+                    B_row_2 <= B[row_counter][2];
+
+                    Result_row_0 <= Result[row_counter][0];
+                    Result_row_1 <= Result[row_counter][1];
+                    Result_row_2 <= Result[row_counter][2];
+
+                    if (row_counter == SIZE-1) begin
+                        state <= DONE;  // Transition to DONE state after all rows are output
+                    end else begin
+                        row_counter <= row_counter + 1;  // Move to the next row
+                    end
+                end
+
+                DONE: begin
+                    done <= 1;  // Set done flag
+                end
+            endcase
+        end
+    end
+
+endmodule
+

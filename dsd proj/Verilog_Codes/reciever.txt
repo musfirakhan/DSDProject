@@ -1,0 +1,69 @@
+Code:
+module uart_rx_module
+(
+  input clk,
+  input rst,
+  input rx,
+  output reg done,
+  output reg [7:0] rxdata,
+  output reg [7:0] data   // New output register to hold the final received data
+);
+
+  // State parameters
+  parameter IDLE  = 2'b00;
+  parameter START = 2'b01;
+
+  integer counts = 0;
+
+  reg [1:0] state = IDLE;  // Initialize state using parameter
+  wire bclk;
+
+  // Instantiate the baud rate generator
+  br #(.BAUD(9600)) u_br (
+    .clk(clk),    // Connect the system clock (100 MHz)
+    .rst(rst),    // Connect the reset signal
+    .bclk(bclk)   // Connect the output baud clock
+  );
+
+  // State Machine for UART Reception
+  always @(posedge bclk) begin
+    if (rst) begin
+      rxdata <= 8'h00;
+      data <= 8'h00;       // Reset data register
+      counts <= 0;
+      done <= 1'b0;
+      state <= IDLE;       // Reset to IDLE state
+    end
+    else begin
+      case (state)
+        IDLE: begin
+          rxdata <= 8'h00;
+          counts <= 0;
+          done <= 1'b0;
+
+          if (rx == 1'b0)
+            state <= START;
+          else
+            state <= IDLE;
+        end
+
+        START: begin
+          if (counts <= 7) begin
+            counts <= counts + 1;
+            rxdata <= {rx, rxdata[7:1]};
+          end
+          else begin
+            counts <= 0;
+            done <= 1'b1;
+            data <= rxdata;   // Transfer completed rxdata to data register
+            state <= IDLE;
+          end
+        end
+
+        default: state <= IDLE;
+      endcase
+    end
+  end
+
+endmodule
+

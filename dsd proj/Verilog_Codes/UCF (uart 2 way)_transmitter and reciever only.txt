@@ -1,0 +1,20 @@
+# Clock signal (100 MHz)
+NET "clk"            LOC = "V10" | IOSTANDARD = "LVCMOS33";   #Bank = 2, pin name = IO_L30N_GCLK0_USERCCLK,            Sch name = GCLK
+Net "clk" TNM_NET = sys_clk_pin;
+TIMESPEC TS_sys_clk_pin = PERIOD sys_clk_pin 100000 kHz;
+
+# Reset signal
+NET "reset" LOC = "C9";        # Pin assignment for reset input button
+
+net "button" loc="C4";
+
+# Us-RS232 interface\
+
+Net "rx" LOC = N17 | IOSTANDARD=LVCMOS33; #Bank = 1, pin name = IO_L48P_HDC_M1DQ8, Sch name = MCU-RX
+Net "tx" LOC = N18 | IOSTANDARD=LVCMOS33; #Bank = 1, pin name = IO_L48N_M1DQ9, Sch name = MCU-TX
+#net "multiplication_done" loc=R11 | IOSTANDARD=LVCMOS33;
+#net "loading_done" loc=N11 | IOSTANDARD=LVCMOS33;
+#net "receive_done" loc=M11 | IOSTANDARD=LVCMOS33;
+#net "init_done" loc=V15 | IOSTANDARD=LVCMOS33;
+#net "done" loc=T11 | IOSTANDARD=LVCMOS33;
+NET "rx_done"         LOC = "V16" | IOSTANDARD = "LVCMOS33";   #Bank = 2, Pin name = IO_L2P_CMPCLK,                     Sch name = LD0

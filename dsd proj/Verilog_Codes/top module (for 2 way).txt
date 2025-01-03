@@ -1,0 +1,418 @@
+module uart_top (
+    input wire clk,             // System clock
+    input wire reset,           // Reset signal
+    input wire rx,              // UART receive input
+    input wire button,          // Button for additional control
+    output wire tx,             // UART transmission output
+    output wire busy,           // Busy signal for transmitter
+    output wire [7:0] rx_data_out, // 8-bit data received
+    output wire [7:0] data,     // 8-bit data received
+    output wire rx_done,        // Reception done signal
+    output reg receive_done,    // Reception done signal
+    output reg init_done,       // Initialization done signal
+    output reg done,            // Process done signal
+    output reg [7:0] leds       // LEDs for status display
+);
+
+    // Memory arrays for RX and TX
+    reg [7:0] rx_memory [0:17];  // Memory to store received data
+    reg [7:0] tx_memory [0:17];  // Memory to store transmitted data
+    reg [5:0] r_index;           // Index for RX memory
+    reg [5:0] t_index;           // Index for TX memory
+    reg [7:0] send;              // Data to send via UART
+    reg stop_receiving;          // Flag to stop receiving data
+    reg delay_start;             // Flag to trigger delay
+    reg tx_delay_start;          // Flag to start delay for TX
+    reg trans_start;             // Flag to start delay for TX
+    reg write_delay;             // New signal for write delay
+    wire delay_done;             // Signal indicating delay completion
+    wire tx_delay_done;          // Signal indicating TX delay completion
+    reg tx_start; 
+
+    wire write_done;
+    // Instantiate UART Transmitter
+    uart_transmitter transmitter (
+        .clk(clk),
+        .reset(reset),
+        .transmit(tx_start),
+        .data_in(send),
+        .tx(tx),
+        .busy(busy)
+    );
+
+    // Instantiate UART Receiver
+    uart_receiver receiver (
+        .clk(clk),
+        .reset(reset),
+        .rx(rx),
+        .done(rx_done),
+        .rxdata(rx_data_out),
+        .data(data)
+    );
+
+    // Instantiate Delay Module
+    delay #(500000) delay_inst (
+        .clk(clk),
+        .reset(reset),
+        .start(delay_start),
+        .done(delay_done)
+    );
+    
+    // Instantiate Delay Module for TX
+    delay #(500000) tx_delay_inst (
+        .clk(clk),
+        .reset(reset),
+        .start(tx_delay_start),
+        .done(tx_delay_done)
+    );
+
+    integer i;
+    // Initialize memories and indices
+    initial begin
+        for (i = 0; i < 18; i = i + 1) begin
+            rx_memory[i] = 0;
+        end
+        r_index = 0;
+        t_index = 0;
+        send = 0;
+        stop_receiving = 0;
+        delay_start = 0;
+        tx_delay_start = 0;
+        receive_done = 0;
+        init_done = 0;
+        done = 0;
+        leds = 0;
+        trans_start = 0;
+        tx_start = 0;
+        write_delay = 0; // Initialize write_delay
+    end
+    
+    initial begin
+        // Initialize tx_memory with 0 for all elements
+        tx_memory[0] = 1;  
+        tx_memory[1] = 2;  
+        tx_memory[2] = 3;  
+        tx_memory[3] = 4;  
+        tx_memory[4] = 5;  
+        tx_memory[5] = 0;  
+        tx_memory[6] = 0;  
+        tx_memory[7] = 0;  
+        tx_memory[8] = 0;  
+        tx_memory[9] = 0;  
+        tx_memory[10] = 0;  
+        tx_memory[11] = 0;  
+        tx_memory[12] = 0;  
+        tx_memory[13] = 0;  
+        tx_memory[14] = 0;  
+        tx_memory[15] = 0;  
+        tx_memory[16] = 0;  
+        tx_memory[17] = 0;  
+    end
+// FSM states
+reg [2:0] IDLE = 3'b000;
+reg [2:0] WAIT_FOR_RX = 3'b001;
+reg [2:0] RECEIVE_DATA = 3'b010;
+reg [2:0] DELAY = 3'b011;
+reg [2:0] FINISHED = 3'b100;
+
+
+
+    // Registers
+    reg [2:0] current_state, next_state;
+    reg button_pressed = 0;
+    reg [2:0] button_sync = 0;     // Button synchronizer
+
+    // Button debounce logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            button_sync <= 0;
+            button_pressed <= 0;
+        end else begin
+            button_sync <= {button_sync[1:0], rx_done};
+            if (button_sync[2:1] == 2'b01) begin
+                button_pressed <= 1; // Detect rising edge of button press
+            end else begin
+                button_pressed <= 0;
+            end
+        end
+    end
+
+    // FSM state transitions
+always @(posedge clk or posedge reset) begin
+    if (reset) begin
+        current_state <= IDLE;  // Assign state to IDLE when reset is asserted
+    end else if (button_pressed) begin
+        current_state <= WAIT_FOR_RX;  // Assign state to WAIT_FOR_RX when button is pressed
+    end else begin
+        current_state <= next_state;  // Otherwise, assign state from next_state
+    end
+end
+
+
+    // Next state logic
+    always @(*) begin
+        case (current_state)
+            IDLE: begin
+                    next_state = IDLE;           
+            end
+            
+            WAIT_FOR_RX: begin
+				
+				 
+ 
+                if (r_index < 10) begin
+                    next_state = RECEIVE_DATA; // Move to RECEIVE_DATA when rx_done is high
+                end else if (r_index >= 10) begin
+						trans_start = 1; ///or do operation 
+                  next_state = FINISHED; // Stop if 10 bytes have been received
+                end else begin
+                    next_state = WAIT_FOR_RX;
+                end
+            end
+				
+            
+            RECEIVE_DATA: begin
+               next_state = FINISHED;; // Move to DELAY state after receiving data
+            end
+ 
+            
+            FINISHED: begin
+                
+                next_state = FINISHED; // Stay in FINISHED state if 10 bytes are received
+            end
+            
+            default: next_state = IDLE;
+        endcase
+    end
+
+    // Output logic (data reception and indexing)
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            r_index <= 0;
+            
+        end else begin
+            case (current_state)
+                RECEIVE_DATA: begin
+                    rx_memory[r_index] <= data; // Store received data in memory
+                    r_index <= r_index + 1;      // Increment memory index
+						  
+						  
+                end
+                
+ 
+                
+                default: begin
+                    // No action needed for other states
+                end
+            endcase
+        end
+    end
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            t_index <= 0;
+            send <= 0;
+            tx_delay_start <= 0;
+        end else if (trans_start && !busy) begin
+            if (!tx_delay_start && t_index < 10) begin
+                tx_start <= 1;
+                tx_delay_start <= 1; // Start delay for transmission
+					 send <= rx_memory[t_index] + 10; // Modify data before sending
+                tx_memory[t_index] <= send; // Store sent data
+            end else if (tx_delay_done) begin
+					 tx_start <= 0;
+                t_index <= t_index + 1;
+                tx_delay_start <= 0; // Reset TX delay start
+            end
+        end
+    end
+
+
+endmodule
+
+
+
+
+
+module delay #(parameter DELAY_CYCLES = 1000000) ( // Number of clock cycles to delay
+    input wire clk,         // System clock
+    input wire reset,       // Reset signal
+    input wire start,       // Start the delay process
+    output reg done         // High when the delay is complete
+);
+    reg [31:0] counter;     // Counter to count clock cycles
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            counter <= 0;
+            done <= 0;
+        end else if (start) begin
+            if (counter < DELAY_CYCLES) begin
+                counter <= counter + 1;
+                done <= 0; // Delay not yet complete
+            end else begin
+                done <= 1; // Signal delay completion
+                counter <= 0; // Reset counter for next delay
+            end
+        end else begin
+            counter <= 0; // Reset counter if not active
+            done <= 0;    // Ensure done is low when not in use
+        end
+    end
+endmodule
+
+
+module uart_transmitter (
+    input wire clk,             // System clock
+    input wire reset,           // Reset signal
+    input wire transmit,        // Signal to start transmission
+    input wire [7:0] data_in,   // 8-bit data to transmit
+    output reg tx,              // UART transmission output
+    output reg busy             // Busy signal
+);
+    parameter CLK_FREQ = 100000000; // Clock frequency in Hz (50MHz for Nexys 3)
+    parameter BAUD_RATE = 9600;    // Baud rate for UART transmission
+    localparam BIT_PERIOD = CLK_FREQ / BAUD_RATE;
+
+    reg [15:0] clk_counter = 0;
+    reg [3:0] bit_index = 0;
+    reg [9:0] tx_data = 10'b1111111111; // Full stop bit frame to initialize
+    button transmitt(clk, transmit, ts);
+    reg transmitting = 0;
+    
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            busy <= 0;
+            tx <= 1; // Idle state for UART is '1'
+            clk_counter <= 0;
+            bit_index <= 0;
+            transmitting <= 0;
+        end else if (ts && !transmitting) begin
+            busy <= 1;
+            transmitting <= 1;
+            tx_data <= {1'b1, data_in, 1'b0}; // Prepare frame: Start bit (0), Data, Stop bit (1)
+            clk_counter <= 0;
+            bit_index <= 0;
+        end else if (transmitting) begin
+            if (clk_counter < BIT_PERIOD) begin
+                clk_counter <= clk_counter + 1;
+            end else begin
+                clk_counter <= 0;
+                tx <= tx_data[bit_index];
+                bit_index <= bit_index + 1;
+                if (bit_index == 9) begin
+                    transmitting <= 0;
+                    busy <= 0;
+                end
+            end
+        end
+end
+endmodule
+module button(input wire clk, in, output wire out);
+// Pushbutton debouncer 
+	reg r1,r2,r3;
+	initial begin 
+		end
+	
+	always@(posedge clk)
+	begin
+		r1<=in;
+		r2<=r1;
+		r3<=r2;
+	end
+	
+assign out=~r3&r2;
+
+endmodule
+module uart_receiver
+(
+  input clk,
+  input reset,              
+  input rx,
+  output reg done,
+  output reg [7:0] rxdata,
+  output reg [7:0] data   // New output register to hold the final received data
+);
+
+  // State parameters
+  parameter IDLE  = 2'b00;
+  parameter START = 2'b01;
+
+  integer counts = 0;
+
+  reg [1:0] state = IDLE;  // Initialize state using parameter
+  wire bclk;
+
+  // Instantiate the baud rate generator
+  br #(.BAUD(9600)) u_br (
+    .clk(clk),    // Connect the system clock (100 MHz)
+    .reset(reset),    // Connect the reset signal (changed from rst to reset)
+    .bclk(bclk)   // Connect the output baud clock
+  );
+
+  // State Machine for UART Reception
+  always @(posedge bclk) begin
+    if (reset) begin            // Changed 'rst' to 'reset'
+      rxdata <= 8'h00;
+      data <= 8'h00;       // Reset data register
+      counts <= 0;
+      done <= 1'b0;
+      state <= IDLE;       // Reset to IDLE state
+    end
+    else begin
+      case (state)
+        IDLE: begin
+          rxdata <= 8'h00;
+          counts <= 0;
+          done <= 1'b0;
+
+          if (rx == 1'b0)
+            state <= START;
+          else
+            state <= IDLE;
+        end
+
+        START: begin
+          if (counts <= 7) begin
+            counts <= counts + 1;
+            rxdata <= {rx, rxdata[7:1]};
+          end
+          else begin
+            counts <= 0;
+            done <= 1'b1;
+            data <= rxdata;   // Transfer completed rxdata to data register
+            state <= IDLE;
+          end
+        end
+
+        default: state <= IDLE;
+      endcase
+    end
+  end
+
+endmodule
+
+
+module br #(parameter BAUD = 9600) (
+    input clk,            // System clock (100 MHz)
+    input reset,             // Changed from rst to reset
+    output reg bclk       // Baud rate clock (9600 Bd)
+);
+
+    reg [32:0] counter = 0;   
+    localparam SYS_CLK = 100_000_000;
+    
+    initial bclk = 1;
+
+    always @(posedge clk or posedge reset) begin  // Changed 'rst' to 'reset'
+        if (reset) counter <= 1;  // Reset logic with 'reset'
+        else begin
+            if (counter == SYS_CLK/(BAUD*2)) begin
+                counter <= 1;
+                bclk <= ~bclk;  // Toggle the baud clock
+            end else begin
+                counter <= counter + 1;
+            end
+        end
+    end
+endmodule
